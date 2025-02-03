@@ -26,6 +26,8 @@ import "codemirror/mode/sql/sql";
 // Features
 import "codemirror/addon/edit/closetag";
 import "codemirror/addon/edit/closebrackets";
+import "codemirror/addon/hint/show-hint";
+import "codemirror/addon/hint/show-hint.css";
 
 // AI Autocomplete Function
 async function getAISuggestions(codeSnippet) {
@@ -39,6 +41,8 @@ async function getAISuggestions(codeSnippet) {
         return "";
     }
 }
+
+const socket = io("http://localhost:5000");
 
 const Editor = ({ socketRef, roomId, onCodeChange }) => {
     const editorRef = useRef(null);
@@ -77,6 +81,7 @@ const Editor = ({ socketRef, roomId, onCodeChange }) => {
         init();
     }, [lang]);
 
+    // Listen for real-time code updates from other users
     useEffect(() => {
         if (socketRef.current) {
             socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }) => {
@@ -84,10 +89,24 @@ const Editor = ({ socketRef, roomId, onCodeChange }) => {
                     editorRef.current.setValue(code);
                 }
             });
+
+            // Listen for AI-powered suggestions from the server
+            socketRef.current.on(ACTIONS.AI_SUGGESTION, (aiSuggestion) => {
+                if (aiSuggestion) {
+                    editorRef.current.showHint({
+                        hint: () => ({
+                            list: [aiSuggestion],
+                            from: editorRef.current.getCursor(),
+                            to: editorRef.current.getCursor(),
+                        }),
+                    });
+                }
+            });
         }
 
         return () => {
             socketRef.current.off(ACTIONS.CODE_CHANGE);
+            socketRef.current.off(ACTIONS.AI_SUGGESTION);
         };
     }, [socketRef.current]);
 
