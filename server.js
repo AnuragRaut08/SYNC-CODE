@@ -1,41 +1,57 @@
-const express = require('express');
+const express = require("express");
+const http = require("http");
+const path = require("path");
+const { Server } = require("socket.io");
+const axios = require("axios");
+
+const ACTIONS = require("./src/actions/Actions");
+
 const app = express();
-
-const http = require('http');
-const path = require('path');
-const {Server} = require('socket.io');
-
-const ACTIONS = require('./src/actions/Actions');
-
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static('build'));
-app.use((req, res, next) => {
-    res.sendFile(path.join(__dirname, 'build', 'index.html'));
+// Serve the React build folder
+app.use(express.static("build"));
+app.use((req, res) => {
+    res.sendFile(path.join(__dirname, "build", "index.html"));
 });
 
 const userSocketMap = {};
+
+// Get all connected clients in a room
 function getAllConnectedClients(roomId) {
-    // Map
     return Array.from(io.sockets.adapter.rooms.get(roomId) || []).map(
-        (socketId) => {
-            return {
-                socketId,
-                username: userSocketMap[socketId],
-            };
-        }
+        (socketId) => ({
+            socketId,
+            username: userSocketMap[socketId],
+        })
     );
 }
 
-io.on('connection', (socket) => {
-    console.log('socket connected', socket.id);
+// AI Autocomplete function using Tabby AI
+async function getAISuggestions(codeSnippet) {
+    try {
+        const response = await axios.post("http://localhost:8080/v1/completions", {
+            prompt: codeSnippet,
+        });
+        return response.data.choices[0].text;
+    } catch (error) {
+        console.error("Error fetching AI suggestions:", error);
+        return "";
+    }
+}
 
-    socket.on(ACTIONS.JOIN, ({roomId, username}) => {
+// WebSocket connection handler
+io.on("connection", (socket) => {
+    console.log("Socket connected:", socket.id);
+
+    // Handle user joining a room
+    socket.on(ACTIONS.JOIN, ({ roomId, username }) => {
         userSocketMap[socket.id] = username;
         socket.join(roomId);
         const clients = getAllConnectedClients(roomId);
-        clients.forEach(({socketId}) => {
+
+        clients.forEach(({ socketId }) => {
             io.to(socketId).emit(ACTIONS.JOINED, {
                 clients,
                 username,
@@ -44,15 +60,20 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on(ACTIONS.CODE_CHANGE, ({roomId, code}) => {
-        socket.in(roomId).emit(ACTIONS.CODE_CHANGE, {code});
+    // Handle real-time code changes
+    socket.on(ACTIONS.CODE_CHANGE, async ({ roomId, code }) => {
+        // Get AI suggestions and send them along with code
+        const aiSuggestion = await getAISuggestions(code);
+        socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code, aiSuggestion });
     });
 
-    socket.on(ACTIONS.SYNC_CODE, ({socketId, code}) => {
-        io.to(socketId).emit(ACTIONS.CODE_CHANGE, {code});
+    // Handle code sync for new users
+    socket.on(ACTIONS.SYNC_CODE, ({ socketId, code }) => {
+        io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
-    socket.on('disconnecting', () => {
+    // Handle user disconnecting
+    socket.on("disconnecting", () => {
         const rooms = [...socket.rooms];
         rooms.forEach((roomId) => {
             socket.in(roomId).emit(ACTIONS.DISCONNECTED, {
@@ -66,11 +87,10 @@ io.on('connection', (socket) => {
 });
 
 // Serve response in production
-app.get('/', (req, res) => {
-    const htmlContent = '<h1>Welcome to the code editor server</h1>';
-    res.setHeader('Content-Type', 'text/html');
-    res.send(htmlContent);
+app.get("/", (req, res) => {
+    res.send("<h1>Welcome to the AI-assisted real-time code editor</h1>");
 });
 
+// Start server
 const PORT = process.env.SERVER_PORT || 5000;
-server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
