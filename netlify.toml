@@ -1,0 +1,7 @@
+[build]
+  publish = "public"  # Change if your frontend is in a different folder
+  functions = "netlify/functions"
+
+[dev]
+  command = "npm run build"
+  port = 8888
