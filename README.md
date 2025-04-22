@@ -13,7 +13,7 @@ Are you tired of sending code snippets back and forth, struggling to debug and c
 - Supports syntax highlighting for different programming languages
 - Users can choose theme based on their preferences
 - Users can leave the room and rejoin later to continue editing
-- Joining & leaving of users is also reflected in real time
+- Joining & leaving of users/leads is also reflected in real time
 
 ### Prerequisites
 
